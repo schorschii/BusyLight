@@ -14,5 +14,15 @@ ATTR{idProduct}=="0780", ATTR{idVendor}=="1208", RUN+="/sbin/modprobe -q ftdi_si
 Replace the vendor/device id for your display.
 
 ## Software Setup
-1. Find the correct device for `soundcardDevice = '/proc/asound/card1/pcm0c/sub0/status'` and enter it in the script.
+1. Create a config file `~/.config/busylight.json` with the content:
+   ```
+    {
+    "SoundcardName": "Generic",
+    "MessageBusy1": "   !!! Meeting !!!",
+    "MessageBusy2": "Please do not disturb.",
+    "MessageNormal1": "Welcome!",
+    "MessageNormal2": "Please come in."
+    }
+   ```
+   The correct soundcard name can be found by executing `cat /proc/asound/cards` (the name in square brackets).
 2. Let the script run in background.
