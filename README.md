@@ -2,6 +2,8 @@
 
 This script displays a "Please do not disturb" text on a EPSON DM-D110 USB display when your microphone is in use.
 
+![EPSON DM-D110 BusyLight](busylight.gif)
+
 ## Hardware Setup
 ```
 /sbin/modprobe ftdi_sio
