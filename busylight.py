@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import QMessageBox
 from PyQt5 import QtGui
 from PyQt5 import QtCore
 
@@ -85,22 +86,36 @@ def main():
         configArray = json.load(open(str(Path.home())+'/.config/busylight.json'))
     except Exception as e:
         print(e)
-    configArray['SoundcardName'] = configArray['SoundcardName'] if 'SoundcardName' in configArray else None # None will take the first sound card with input available
-    configArray['MessageBusy1'] = configArray['MessageBusy1'] if 'MessageBusy1' in configArray else '   !!! MEETING !!!'
-    configArray['MessageBusy2'] = configArray['MessageBusy2'] if 'MessageBusy2' in configArray else 'Please do not disturb.'
-    configArray['MessageNormal1'] = configArray['MessageNormal1'] if 'MessageNormal1' in configArray else ''
-    configArray['MessageNormal2'] = configArray['MessageNormal2'] if 'MessageNormal2' in configArray else ''
+    configArray['DisplaySerialPort'] = configArray.get('DisplaySerialPort', '/dev/ttyUSB0')
+    configArray['SoundcardName'] = configArray.get('SoundcardName', None) # None will take the first sound card with input available
+    configArray['MessageBusy1'] = configArray.get('MessageBusy1', '   !!! MEETING !!!')
+    configArray['MessageBusy2'] = configArray.get('MessageBusy2', 'Please do not disturb.')
+    configArray['MessageNormal1'] = configArray.get('MessageNormal1', '')
+    configArray['MessageNormal2'] = configArray.get('MessageNormal2', '')
     configArray['IconNormal'] = os.path.dirname(os.path.realpath(__file__))+'/normal.svg'
     configArray['IconBusy'] = os.path.dirname(os.path.realpath(__file__))+'/busy.svg'
-
-    # initialize display driver
-    display = pyposdisplay.Driver()
 
     # initialize QT tray bar icon
     app = QtWidgets.QApplication(sys.argv)
     w = QtWidgets.QWidget()
     trayIcon = SystemTrayIcon(QtGui.QIcon(configArray['IconNormal']), w)
     trayIcon.show()
+
+    # initialize display driver
+    display = pyposdisplay.Driver(config={'customer_display_device_name':configArray['DisplaySerialPort']})
+    try:
+        for i in range(0, 10):
+            display.send_text(['      BusyLight     ', '=='*i])
+            time.sleep(0.01)
+    except Exception as e:
+        # show an error if the serial port is not available
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Critical)
+        msg.setWindowTitle('Unable to connect to line display')
+        msg.setText(str(e))
+        msg.setStandardButtons(QMessageBox.Ok)
+        retval = msg.exec_()
+        exit(1)
 
     # find desired sound card and start monitoring sound device
     soundcardRecordingDevice = None
