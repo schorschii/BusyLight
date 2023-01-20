@@ -2,10 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QMessageBox
 from PyQt5 import QtGui
 from PyQt5 import QtCore
 
+import dbus
+from dbus.mainloop.glib import DBusGMainLoop
+
+from functools import partial
 from pathlib import Path
 import pyposdisplay
 import threading, time
@@ -35,49 +38,120 @@ class MeetingBlink(threading.Thread):
 class SoundcardMonitor(threading.Thread):
     configArray = []
     soundcardRecordingDevice = None
+    controller = None
     display = None
     trayIcon = None
     blinker = None
-    def __init__(self, configArray, soundcardRecordingDevice, display, trayIcon, *args, **kwargs):
+    def __init__(self, configArray, soundcardRecordingDevice, controller, display, trayIcon, *args, **kwargs):
         self.configArray = configArray
         self.soundcardRecordingDevice = soundcardRecordingDevice
+        self.controller = controller
         self.display = display
         self.trayIcon = trayIcon
         super(SoundcardMonitor, self).__init__(*args, **kwargs)
     def run(self):
-        cleared = False
         while True:
             f = open(self.soundcardRecordingDevice, 'r')
-            if('RUNNING' in f.read()):
-                # start blinking message
-                cleared = False
-                self.trayIcon.setIcon(QtGui.QIcon(self.configArray['IconBusy']))
-                if self.blinker == None:
-                    self.blinker = MeetingBlink(self.configArray, self.display)
-                    self.blinker.daemon = True
-                    self.blinker.start()
-            else:
-                # clear display
-                if not cleared:
-                    cleared = True
-                    self.trayIcon.setIcon(QtGui.QIcon(self.configArray['IconNormal']))
-                    self.display.send_text([self.configArray['MessageNormal1'], self.configArray['MessageNormal2']])
-                    if self.blinker != None:
-                        self.blinker.stop()
-                        self.blinker = None
-
+            try:
+                if('RUNNING' in f.read()): self.controller.busy()
+                else: self.controller.idle()
+            except Exception: pass
             f.close()
             time.sleep(1)
 
+class LineInputWindow(QtWidgets.QDialog):
+    controller = None
+    def __init__(self, controller, *args, **kwargs):
+        super(LineInputWindow, self).__init__(*args, **kwargs)
+        self.controller = controller
+        self.buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        self.buttonBox.accepted.connect(self.accept)
+        self.layout = QtWidgets.QVBoxLayout(self)
+        self.txtLine1 = QtWidgets.QLineEdit()
+        self.txtLine1.setText(self.controller.messageCurrent1)
+        self.txtLine1.textChanged.connect(partial(self.inputChanged, self.txtLine1))
+        self.layout.addWidget(self.txtLine1)
+        self.txtLine2 = QtWidgets.QLineEdit()
+        self.txtLine2.setText(self.controller.messageCurrent2)
+        self.txtLine2.textChanged.connect(partial(self.inputChanged, self.txtLine2))
+        self.layout.addWidget(self.txtLine2)
+        self.layout.addWidget(self.buttonBox)
+        self.setLayout(self.layout)
+        self.setWindowTitle('Set Idle Text')
+    def accept(self):
+        self.controller.idle(self.txtLine1.text(), self.txtLine2.text())
+        self.hide()
+    def inputChanged(self, widget, text):
+        maxInputLen = 20
+        if(len(widget.text()) > maxInputLen):
+            text = widget.text()
+            text = text[:maxInputLen]
+            widget.setText(text)
+            widget.setCursorPosition(maxInputLen)
+
 class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
-    def __init__(self, icon, parent=None):
+    parentWidget = None
+    controller = None
+    def __init__(self, icon, parent):
         QtWidgets.QSystemTrayIcon.__init__(self, icon, parent)
+        self.parentWidget = parent
         menu = QtWidgets.QMenu(parent)
+        setTextAction = menu.addAction('Set Idle Text')
+        setTextAction.triggered.connect(self.setText)
         exitAction = menu.addAction('Exit')
-        self.setContextMenu(menu)
         exitAction.triggered.connect(self.exit)
+        self.setContextMenu(menu)
+    def setText(self):
+        window = LineInputWindow(self.controller, self.parentWidget)
+        window.exec_()
     def exit(self):
         QtCore.QCoreApplication.exit()
+
+class BusyLightController():
+    configArray = {}
+    display = None
+    trayIcon = None
+    blinker = None
+    cleared = False
+    messageCurrent1 = ''
+    messageCurrent2 = ''
+    def __init__(self, configArray, display, trayIcon, *args, **kwargs):
+        self.configArray = configArray
+        self.display = display
+        self.trayIcon = trayIcon
+        self.messageCurrent1 = self.configArray['MessageNormal1']
+        self.messageCurrent2 = self.configArray['MessageNormal2']
+    def processDbusSignal(self, bus, message): # listen for lock screen changes
+        if(message.get_member() != 'ActiveChanged'): return
+        args = message.get_args_list()
+        if(args[0] == True):
+            self.messageCurrent1 = self.configArray['MessageAbsent1']
+            self.messageCurrent2 = self.configArray['MessageAbsent2']
+        elif(args[0] == False):
+            self.messageCurrent1 = self.configArray['MessageNormal1']
+            self.messageCurrent2 = self.configArray['MessageNormal2']
+        self.display.send_text([self.messageCurrent1, self.messageCurrent2])
+    def busy(self): # start blinking message
+        self.cleared = False
+        self.trayIcon.setIcon(QtGui.QIcon(self.configArray['IconBusy']))
+        if self.blinker == None:
+            self.blinker = MeetingBlink(self.configArray, self.display)
+            self.blinker.daemon = True
+            self.blinker.start()
+    def idle(self, line1=None, line2=None): # clear display
+        if(line1 != None):
+            self.configArray['MessageNormal1'] = line1
+            self.messageCurrent1 = line1
+        if(line2 != None):
+            self.configArray['MessageNormal2'] = line2
+            self.messageCurrent2 = line2
+        if not self.cleared or line1 != None or line2 != None:
+            self.cleared = True
+            self.trayIcon.setIcon(QtGui.QIcon(self.configArray['IconNormal']))
+            self.display.send_text([self.messageCurrent1, self.messageCurrent2])
+            if self.blinker != None:
+                self.blinker.stop()
+                self.blinker = None
 
 def main():
     # read configuration values
@@ -92,6 +166,8 @@ def main():
     configArray['MessageBusy2'] = configArray.get('MessageBusy2', 'Please do not disturb.')
     configArray['MessageNormal1'] = configArray.get('MessageNormal1', '')
     configArray['MessageNormal2'] = configArray.get('MessageNormal2', '')
+    configArray['MessageAbsent1'] = configArray.get('MessageAbsent1', '')
+    configArray['MessageAbsent2'] = configArray.get('MessageAbsent2', '')
     configArray['IconNormal'] = os.path.dirname(os.path.realpath(__file__))+'/normal.svg'
     configArray['IconBusy'] = os.path.dirname(os.path.realpath(__file__))+'/busy.svg'
 
@@ -109,13 +185,16 @@ def main():
             time.sleep(0.01)
     except Exception as e:
         # show an error if the serial port is not available
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Critical)
+        msg = QtWidgets.QMessageBox()
+        msg.setIcon(QtWidgets.QMessageBox.Critical)
         msg.setWindowTitle('Unable to connect to line display')
         msg.setText(str(e))
-        msg.setStandardButtons(QMessageBox.Ok)
+        msg.setStandardButtons(QtWidgets.QMessageBox.Ok)
         retval = msg.exec_()
-        exit(1)
+
+    # init core busy light controller
+    controller = BusyLightController(configArray, display, trayIcon)
+    trayIcon.controller = controller
 
     # find desired sound card and start monitoring sound device
     soundcardRecordingDevice = None
@@ -131,9 +210,15 @@ def main():
         if soundcardRecordingDevice != None:
             break
         f.close()
-    monitor = SoundcardMonitor(configArray, soundcardRecordingDevice, display, trayIcon)
+    monitor = SoundcardMonitor(configArray, soundcardRecordingDevice, controller, display, trayIcon)
     monitor.daemon = True
     monitor.start()
+
+    # listen for lock screen events
+    DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+    bus.add_match_string("type='signal',interface='org.cinnamon.ScreenSaver'")
+    bus.add_message_filter(controller.processDbusSignal)
 
     # start QT app
     sys.exit(app.exec_())
