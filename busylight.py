@@ -64,22 +64,38 @@ class LineInputWindow(QtWidgets.QDialog):
     def __init__(self, controller, *args, **kwargs):
         super(LineInputWindow, self).__init__(*args, **kwargs)
         self.controller = controller
-        self.buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        # window layout
+        self.buttonBox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save|QtWidgets.QDialogButtonBox.Cancel)
         self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
         self.layout = QtWidgets.QVBoxLayout(self)
         self.txtLine1 = QtWidgets.QLineEdit()
+        self.txtLine1.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
         self.txtLine1.setText(self.controller.messageCurrent1)
         self.txtLine1.textChanged.connect(partial(self.inputChanged, self.txtLine1))
         self.layout.addWidget(self.txtLine1)
         self.txtLine2 = QtWidgets.QLineEdit()
+        self.txtLine2.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont))
         self.txtLine2.setText(self.controller.messageCurrent2)
         self.txtLine2.textChanged.connect(partial(self.inputChanged, self.txtLine2))
         self.layout.addWidget(self.txtLine2)
         self.layout.addWidget(self.buttonBox)
         self.setLayout(self.layout)
+        # window properties
         self.setWindowTitle('Set Idle Text')
+        self.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
+        # center screen
+        qr = self.frameGeometry()
+        cp = QtWidgets.QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
+    def closeEvent(self, event):
+        event.ignore()
+        self.hide()
     def accept(self):
         self.controller.idle(self.txtLine1.text(), self.txtLine2.text())
+        self.hide()
+    def reject(self):
         self.hide()
     def inputChanged(self, widget, text):
         maxInputLen = 20
@@ -101,6 +117,11 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
         exitAction = menu.addAction('Exit')
         exitAction.triggered.connect(self.exit)
         self.setContextMenu(menu)
+        self.activated.connect(self.showMenuOnTrigger)
+        self.setToolTip('Sieber Systems BusyLight')
+    def showMenuOnTrigger(self, reason):
+        if(reason == QtWidgets.QSystemTrayIcon.Trigger):
+            self.contextMenu().popup(QtGui.QCursor.pos())
     def setText(self):
         window = LineInputWindow(self.controller, self.parentWidget)
         window.exec_()
