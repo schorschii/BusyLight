@@ -6,11 +6,18 @@ This script displays a "Please do not disturb" text on a EPSON DM-D110 USB displ
 
 ## Hardware Setup
 ```
-/sbin/modprobe ftdi_sio
+# load the usb-serial kernel module and make it recognize our usb device
+# with vendorID=1208, productID=0780 as a serial adapter -> creates /dev/ttyUSB0
+modprobe ftdi_sio
 echo "1208 0780" > /sys/bus/usb-serial/drivers/ftdi_sio/new_id
 
-#/etc/udev/rules.d/50-dmd110.rules:
+# create a udev rule so that this will be done automatically when (re-)connecting the device
+# /etc/udev/rules.d/50-dmd110.rules:
 ATTR{idProduct}=="0780", ATTR{idVendor}=="1208", RUN+="/sbin/modprobe -q ftdi_sio" RUN+="/bin/sh -c 'echo 1208 0780 > /sys/bus/usb-serial/drivers/ftdi_sio/new_id'",  OWNER="root", MODE="0666"
+
+# if you have multiple usb-serial adapters, you may want to create unique device files as the adapters may be recognized in different order on every boot
+# in this case, add the following udev rule which makes your EPSON display with serial=12345678 always available as /dev/linedisplay (find your serial be reading `dmesg`)
+SUBSYSTEMS=="usb", KERNEL=="ttyUSB*", ATTRS{idVendor}=="1208", ATTRS{idProduct}=="0780", ATTRS{serial}=="12345678", SYMLINK+="linedisplay"
 ```
 
 Replace the vendor/device id for your display.
