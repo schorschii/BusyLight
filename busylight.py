@@ -10,11 +10,25 @@ from dbus.mainloop.glib import DBusGMainLoop
 
 from functools import partial
 from pathlib import Path
-import pyposdisplay
+import serial
 import threading, time
 import glob
 import json
 import sys, os
+
+class PosDisplay():
+    def __init__(self, serialPort, serialBaud=9600):
+        self.serial = serial.Serial(serialPort, serialBaud)
+        self.serial.write(b'\x1F\x43\x00') # EPSON / Bixolon setup
+        self.serial.write(b'\x0C') # clear display
+    def send_text(self, lines):
+        line1 = lines[0]
+        line2 = '' if len(lines)<2 else lines[1]
+        self.serial.write(
+            (line1.ljust(20)[:20]
+            +line2.ljust(20)[:20])
+                .encode('cp858')
+        )
 
 class MeetingBlink(threading.Thread):
     configArray = []
@@ -199,7 +213,7 @@ def main():
     trayIcon.show()
 
     # initialize display driver
-    display = pyposdisplay.Driver(config={'customer_display_device_name':configArray['DisplaySerialPort']})
+    display = PosDisplay(configArray['DisplaySerialPort'])
     try:
         for i in range(0, 10):
             display.send_text(['      BusyLight     ', '=='*i])
