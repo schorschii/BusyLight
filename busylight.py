@@ -54,14 +54,32 @@ class SoundcardMonitor(threading.Thread):
     display = None
     trayIcon = None
     blinker = None
-    def __init__(self, configArray, soundcardRecordingDevice, controller, display, trayIcon, *args, **kwargs):
+    def __init__(self, configArray, controller, display, trayIcon, *args, **kwargs):
         self.configArray = configArray
-        self.soundcardRecordingDevice = soundcardRecordingDevice
         self.controller = controller
         self.display = display
         self.trayIcon = trayIcon
+        self.findSoundcard(configArray['SoundcardName'])
+        if(self.soundcardRecordingDevice == None):
+            print('Soundcard', configArray['SoundcardName'], 'is not available, taking the first input device instead.')
+            self.findSoundcard(None)
         super(SoundcardMonitor, self).__init__(*args, **kwargs)
+    def findSoundcard(self, targetName):
+        for checkName in glob.glob('/proc/asound/card*/id'):
+            with open(checkName, 'r') as f:
+                checkSoundcardName = f.read().strip()
+                if checkSoundcardName == targetName or targetName == None:
+                    soundcardDevice = checkName.rstrip('/id')
+                    for name2 in glob.glob(soundcardDevice+'/pcm*c/sub0/status'):
+                        print(f'Monitoring {name2} ({checkSoundcardName}) sound device')
+                        self.soundcardRecordingDevice = name2
+                        break
+                if self.soundcardRecordingDevice != None:
+                    break
     def run(self):
+        if(self.soundcardRecordingDevice == None):
+            print('No sound input device! Unable to check if you are busy.')
+            return
         while True:
             f = open(self.soundcardRecordingDevice, 'r')
             try:
@@ -226,21 +244,8 @@ def main():
     controller = BusyLightController(configArray, display, trayIcon)
     trayIcon.controller = controller
 
-    # find desired sound card and start monitoring sound device
-    soundcardRecordingDevice = None
-    for name in glob.glob('/proc/asound/card*/id'):
-        f = open(name, 'r')
-        checkSoundcardName = f.read().strip()
-        if checkSoundcardName == configArray['SoundcardName'] or configArray['SoundcardName'] == None:
-            soundcardDevice = name.rstrip('/id')
-            for name2 in glob.glob(soundcardDevice+'/pcm*c/sub0/status'):
-                print(f'Monitoring {name2} ({checkSoundcardName}) sound device')
-                soundcardRecordingDevice = name2
-                break
-        if soundcardRecordingDevice != None:
-            break
-        f.close()
-    monitor = SoundcardMonitor(configArray, soundcardRecordingDevice, controller, display, trayIcon)
+    # init soundcard monitor
+    monitor = SoundcardMonitor(configArray, controller, display, trayIcon)
     monitor.daemon = True
     monitor.start()
 
