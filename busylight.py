@@ -8,8 +8,10 @@ from dbus.mainloop.glib import DBusGMainLoop
 
 from functools import partial
 from pathlib import Path
+import atexit
 import serial
-import threading, time
+import threading
+import time
 import glob
 import json
 import sys, os
@@ -169,6 +171,9 @@ class BusyLightController():
         self.trayIcon = trayIcon
         self.messageCurrent1 = self.configArray['MessageNormal1']
         self.messageCurrent2 = self.configArray['MessageNormal2']
+        atexit.register(self.clearDisplay)
+    def clearDisplay(self):
+        self.display.send_text([self.configArray['MessageQuit1'], self.configArray['MessageQuit2']])
     def processDbusSignal(self, bus, message): # listen for lock screen changes
         if(message.get_member() != 'ActiveChanged'): return
         args = message.get_args_list()
@@ -216,6 +221,8 @@ def main():
     configArray['MessageNormal2'] = configArray.get('MessageNormal2', '')
     configArray['MessageAbsent1'] = configArray.get('MessageAbsent1', '')
     configArray['MessageAbsent2'] = configArray.get('MessageAbsent2', '')
+    configArray['MessageQuit1'] = configArray.get('MessageQuit1', '')
+    configArray['MessageQuit2'] = configArray.get('MessageQuit2', '')
     configArray['IconNormal'] = os.path.dirname(os.path.realpath(__file__))+'/normal.svg'
     configArray['IconBusy'] = os.path.dirname(os.path.realpath(__file__))+'/busy.svg'
 

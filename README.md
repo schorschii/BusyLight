@@ -33,7 +33,9 @@ Replace the vendor/device id for your display.
       "MessageNormal1": "Welcome!",
       "MessageNormal2": "Please come in.",
       "MessageAbsent1": "I'll be back...",
-      "MessageAbsent2": "(sooner or later)"
+      "MessageAbsent2": "(sooner or later)",
+      "MessageQuit1": "Bye!",
+      "MessageQuit2": "See you."
     }
    ```
    The correct soundcard name can be found by executing `cat /proc/asound/cards` (the name in square brackets).
